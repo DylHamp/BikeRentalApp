@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:orientation="vertical"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent">
+    <Button
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/sign_in"
+        android:id="@+id/sign_in_button"/>
+
+    <Button
+        android:layout_below="@id/sign_in_button"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/reserve"
+        android:id="@+id/reservation_button"/>
+
+    <Button
+        android:layout_below="@id/reservation_button"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/info"
+        android:id="@+id/info_button"/>
+
+    <Button
+        android:layout_below="@id/info_button"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:id="@+id/faq_button"
+        android:text="@string/faq"/>
+
+    <TextView
+        android:text="Nothing yet"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:id="@+id/api_return"/>
+
+</LinearLayout>
