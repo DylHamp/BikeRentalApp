@@ -1,4 +1,4 @@
-package app.katybikerental.com.bikerentalapp;
+package com.example.quickstart;
 
 import android.content.Context;
 import android.support.test.InstrumentationRegistry;
@@ -20,5 +20,7 @@ public class ExampleInstrumentedTest {
     public void useAppContext() throws Exception {
         // Context of the app under test.
         Context appContext = InstrumentationRegistry.getTargetContext();
+
+        assertEquals("com.example.quickstart", appContext.getPackageName());
     }
 }

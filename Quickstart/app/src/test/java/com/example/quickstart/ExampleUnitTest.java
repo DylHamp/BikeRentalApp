@@ -1,4 +1,4 @@
-package app.katybikerental.com.bikerentalapp;
+package com.example.quickstart;
 
 import org.junit.Test;
 

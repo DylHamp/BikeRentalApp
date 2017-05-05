@@ -1,15 +1,18 @@
 package app.katybikerental.com.bikerentalapp;
 
+import android.app.AlertDialog;
 import android.nfc.Tag;
 import android.os.Bundle;
 import android.support.annotation.Nullable;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentTransaction;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.app.ProgressDialog;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GoogleApiAvailability;
 import com.google.api.client.extensions.android.http.AndroidHttp;
@@ -26,6 +29,7 @@ import com.google.api.services.sheets.v4.SheetsScopes;
 
 import android.app.ProgressDialog;
 
+import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import java.io.IOException;
@@ -48,6 +52,7 @@ public class MenuFragment extends Fragment implements View.OnClickListener {
     private static String TAG = "MENUFRAGMENT";
 
     public BikeRentalActivity mActivity;
+    public APICaller mAPICaller;
 
     @Nullable
     @Override
@@ -56,6 +61,7 @@ public class MenuFragment extends Fragment implements View.OnClickListener {
 
         mOutputText = (TextView) rootView.findViewById(R.id.api_return);
         mActivity = (BikeRentalActivity) getActivity();
+        mAPICaller = mActivity.mAPIData;
 
         mSignInButton = (Button) rootView.findViewById(R.id.sign_in_button);
         mSignInButton.setOnClickListener(this);
@@ -66,11 +72,8 @@ public class MenuFragment extends Fragment implements View.OnClickListener {
         mFaqButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                mFaqButton.setEnabled(false);
-                mOutputText.setText("");
                 mActivity.mAPIData.getResultsFromApi();
                 mOutputText.setText(mActivity.mAPIData.mOutputText);
-                mOutputText.setEnabled(true);
             }
         });
 
@@ -101,4 +104,6 @@ public class MenuFragment extends Fragment implements View.OnClickListener {
         ft.replace(R.id.content_frame, contentFragment);
         ft.commit();
     }
+
+
 }

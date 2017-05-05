@@ -20,9 +20,7 @@ import com.google.api.services.sheets.v4.SheetsScopes;
 
 import com.google.api.services.sheets.v4.model.*;
 
-import android.Manifest;
 import android.accounts.AccountManager;
-import android.app.Activity;
 import android.app.Dialog;
 import android.app.ProgressDialog;
 import android.content.Context;
@@ -31,15 +29,9 @@ import android.content.SharedPreferences;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.os.AsyncTask;
-import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.text.TextUtils;
-import android.text.method.ScrollingMovementMethod;
 import android.util.Log;
-import android.view.View;
-import android.view.ViewGroup;
-import android.widget.Button;
-import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import java.io.IOException;
@@ -50,11 +42,21 @@ import java.util.List;
 import pub.devrel.easypermissions.AfterPermissionGranted;
 import pub.devrel.easypermissions.EasyPermissions;
 
-public class APICaller extends Activity implements EasyPermissions.PermissionCallbacks {
+public class APICaller implements EasyPermissions.PermissionCallbacks {
     GoogleAccountCredential mCredential;
-    ProgressDialog mProgress;
-
+    BikeRentalActivity mBikeActivity;
+    public ProgressDialog mProgress;
     public String mOutputText;
+
+
+    public APICaller(BikeRentalActivity c) {
+        this.mBikeActivity = c;
+        this.mCredential = GoogleAccountCredential.usingOAuth2(
+                c, Arrays.asList(SCOPES))
+                .setBackOff(new ExponentialBackOff());
+        this.mProgress = new ProgressDialog(c);
+        mProgress.setMessage("Calling google api ...");
+    }
 
     private String TAG = "APICALLER";
 
@@ -63,18 +65,9 @@ public class APICaller extends Activity implements EasyPermissions.PermissionCal
     static final int REQUEST_GOOGLE_PLAY_SERVICES = 1002;
     static final int REQUEST_PERMISSION_GET_ACCOUNTS = 1003;
 
-    private static final String PREF_ACCOUNT_NAME = "accountName";
-    private static final String[] SCOPES = { SheetsScopes.SPREADSHEETS_READONLY };
+    public static final String PREF_ACCOUNT_NAME = "accountName";
+    public static final String[] SCOPES = { SheetsScopes.SPREADSHEETS_READONLY };
 
-    @Override
-    public void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-
-        // Initialize credentials and service object.
-        mCredential = GoogleAccountCredential.usingOAuth2(
-                getApplicationContext(), Arrays.asList(SCOPES))
-                .setBackOff(new ExponentialBackOff());
-    }
 
     /**
      * Attempt to call the API, after verifying that all the preconditions are
@@ -107,76 +100,10 @@ public class APICaller extends Activity implements EasyPermissions.PermissionCal
      */
     @AfterPermissionGranted(REQUEST_PERMISSION_GET_ACCOUNTS)
     private void chooseAccount() {
-        if (EasyPermissions.hasPermissions(
-                this, Manifest.permission.GET_ACCOUNTS)) {
-            String accountName = getPreferences(Context.MODE_PRIVATE)
-                    .getString(PREF_ACCOUNT_NAME, null);
-            if (accountName != null) {
-                mCredential.setSelectedAccountName(accountName);
-                getResultsFromApi();
-            } else {
-                // Start a dialog from which the user can choose an account
-                startActivityForResult(
-                        mCredential.newChooseAccountIntent(),
-                        REQUEST_ACCOUNT_PICKER);
-            }
-        } else {
-            // Request the GET_ACCOUNTS permission via a user dialog
-            EasyPermissions.requestPermissions(
-                    this,
-                    "This app needs to access your Google account (via Contacts).",
-                    REQUEST_PERMISSION_GET_ACCOUNTS,
-                    Manifest.permission.GET_ACCOUNTS);
-        }
+        mBikeActivity.chooseAccount();
     }
 
-    /**
-     * Called when an activity launched here (specifically, AccountPicker
-     * and authorization) exits, giving you the requestCode you started it with,
-     * the resultCode it returned, and any additional data from it.
-     * @param requestCode code indicating which activity result is incoming.
-     * @param resultCode code indicating the result of the incoming
-     *     activity result.
-     * @param data Intent (containing result data) returned by incoming
-     *     activity result.
-     */
-    @Override
-    protected void onActivityResult(
-            int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        switch(requestCode) {
-            case REQUEST_GOOGLE_PLAY_SERVICES:
-                if (resultCode != RESULT_OK) {
-                    Log.e(TAG,
-                            "This app requires Google Play Services. Please install " +
-                                    "Google Play Services on your device and relaunch this app.");
-                } else {
-                    getResultsFromApi();
-                }
-                break;
-            case REQUEST_ACCOUNT_PICKER:
-                if (resultCode == RESULT_OK && data != null &&
-                        data.getExtras() != null) {
-                    String accountName =
-                            data.getStringExtra(AccountManager.KEY_ACCOUNT_NAME);
-                    if (accountName != null) {
-                        SharedPreferences settings =
-                                getPreferences(Context.MODE_PRIVATE);
-                        SharedPreferences.Editor editor = settings.edit();
-                        editor.putString(PREF_ACCOUNT_NAME, accountName);
-                        editor.apply();
-                        mCredential.setSelectedAccountName(accountName);
-                        getResultsFromApi();
-                    }
-                }
-                break;
-            case REQUEST_AUTHORIZATION:
-                if (resultCode == RESULT_OK) {
-                    getResultsFromApi();
-                }
-                break;
-        }
-    }
+
 
     /**
      * Respond to requests for permissions at runtime for API 23 and above.
@@ -190,7 +117,7 @@ public class APICaller extends Activity implements EasyPermissions.PermissionCal
     public void onRequestPermissionsResult(int requestCode,
                                            @NonNull String[] permissions,
                                            @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        mBikeActivity.onRequestPermissionsResult(requestCode, permissions, grantResults);
         EasyPermissions.onRequestPermissionsResult(
                 requestCode, permissions, grantResults, this);
     }
@@ -225,7 +152,7 @@ public class APICaller extends Activity implements EasyPermissions.PermissionCal
      */
     private boolean isDeviceOnline() {
         ConnectivityManager connMgr =
-                (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+                (ConnectivityManager) mBikeActivity.getSystemService(Context.CONNECTIVITY_SERVICE);
         NetworkInfo networkInfo = connMgr.getActiveNetworkInfo();
         return (networkInfo != null && networkInfo.isConnected());
     }
@@ -238,10 +165,13 @@ public class APICaller extends Activity implements EasyPermissions.PermissionCal
     private boolean isGooglePlayServicesAvailable() {
         GoogleApiAvailability apiAvailability =
                 GoogleApiAvailability.getInstance();
-        final int connectionStatusCode =
-                apiAvailability.isGooglePlayServicesAvailable(this);
+        int connectionStatusCode = apiAvailability.isGooglePlayServicesAvailable(mBikeActivity);
+        Log.e(TAG, String.valueOf(connectionStatusCode));
+        Log.e(TAG, String.valueOf(ConnectionResult.SUCCESS));
         return connectionStatusCode == ConnectionResult.SUCCESS;
     }
+
+
 
     /**
      * Attempt to resolve a missing, out-of-date, invalid or disabled Google
@@ -251,7 +181,7 @@ public class APICaller extends Activity implements EasyPermissions.PermissionCal
         GoogleApiAvailability apiAvailability =
                 GoogleApiAvailability.getInstance();
         final int connectionStatusCode =
-                apiAvailability.isGooglePlayServicesAvailable(this);
+                apiAvailability.isGooglePlayServicesAvailable(mBikeActivity);
         if (apiAvailability.isUserResolvableError(connectionStatusCode)) {
             showGooglePlayServicesAvailabilityErrorDialog(connectionStatusCode);
         }
@@ -267,8 +197,7 @@ public class APICaller extends Activity implements EasyPermissions.PermissionCal
     void showGooglePlayServicesAvailabilityErrorDialog(
             final int connectionStatusCode) {
         GoogleApiAvailability apiAvailability = GoogleApiAvailability.getInstance();
-        Dialog dialog = apiAvailability.getErrorDialog(
-                APICaller.this,
+        Dialog dialog = apiAvailability.getErrorDialog(mBikeActivity,
                 connectionStatusCode,
                 REQUEST_GOOGLE_PLAY_SERVICES);
         dialog.show();
@@ -278,9 +207,9 @@ public class APICaller extends Activity implements EasyPermissions.PermissionCal
      * An asynchronous task that handles the Google Sheets API call.
      * Placing the API calls in their own task ensures the UI stays responsive.
      */
-    private class MakeRequestTask extends AsyncTask<Void, Void, List<String>> {
-        private com.google.api.services.sheets.v4.Sheets mService = null;
-        private Exception mLastError = null;
+    public class MakeRequestTask extends AsyncTask<Void, Void, List<String>> {
+        public com.google.api.services.sheets.v4.Sheets mService = null;
+        public Exception mLastError = null;
 
         MakeRequestTask(GoogleAccountCredential credential) {
             HttpTransport transport = AndroidHttp.newCompatibleTransport();
@@ -289,6 +218,48 @@ public class APICaller extends Activity implements EasyPermissions.PermissionCal
                     transport, jsonFactory, credential)
                     .setApplicationName("Google Sheets API Android Quickstart")
                     .build();
+        }
+
+        @Override
+        protected void onPreExecute() {
+            mOutputText = "";
+            mProgress.show();
+        }
+
+        @Override
+        protected void onPostExecute(List<String> output) {
+            mProgress.hide();
+            String textOutput = "";
+            if (output == null || output.size() == 0) {
+                Log.e(TAG, "No results returned.");
+            } else {
+                output.add(0, "Data retrieved using the Google Sheets API:");
+                textOutput = TextUtils.join("\n", output);
+            }
+            Log.d(TAG, textOutput);
+            mOutputText = textOutput;
+        }
+
+        @Override
+        protected void onCancelled() {
+            mProgress.hide();
+            if (mLastError != null) {
+                if (mLastError instanceof GooglePlayServicesAvailabilityIOException) {
+                    showGooglePlayServicesAvailabilityErrorDialog(
+                            ((GooglePlayServicesAvailabilityIOException) mLastError)
+                                    .getConnectionStatusCode());
+                } else if (mLastError instanceof UserRecoverableAuthIOException) {
+                    mBikeActivity.startActivityForResult(
+                            ((UserRecoverableAuthIOException) mLastError).getIntent(),
+                            APICaller.REQUEST_AUTHORIZATION);
+                } else {
+                    mOutputText = "The following error occurred:\n"
+                            + mLastError.getMessage();
+                }
+            } else {
+                mOutputText = "Request cancelled.";
+            }
+            Log.e(TAG, "Stuff");
         }
 
         /**
@@ -314,9 +285,9 @@ public class APICaller extends Activity implements EasyPermissions.PermissionCal
          * @return List of names and majors
          * @throws IOException
          */
-        private List<String> getDataFromApi() throws IOException {
-            String spreadsheetId = "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms";
-            String range = "Class Data!A2:E";
+        public List<String> getDataFromApi() throws IOException {
+            String spreadsheetId = "1iflc3utd0p6V6cubjb3byDzsgf2OPdUv8fjJL55MABY";
+            String range = "Sheet1!A2:E";
             List<String> results = new ArrayList<String>();
             ValueRange response = this.mService.spreadsheets().values()
                     .get(spreadsheetId, range)
@@ -328,46 +299,11 @@ public class APICaller extends Activity implements EasyPermissions.PermissionCal
                     results.add(row.get(0) + ", " + row.get(4));
                 }
             }
+            Log.d(TAG, results.toString());
             return results;
         }
 
 
-        @Override
-        protected void onPreExecute() {
-            mOutputText = "";
-            mProgress.show();
-        }
 
-        @Override
-        protected void onPostExecute(List<String> output) {
-            mProgress.hide();
-            if (output == null || output.size() == 0) {
-                Log.e(TAG, "No results returned.");
-            } else {
-                output.add(0, "Data retrieved using the Google Sheets API:");
-                mOutputText = TextUtils.join("\n", output);
-            }
-        }
-
-        @Override
-        protected void onCancelled() {
-            mProgress.hide();
-            if (mLastError != null) {
-                if (mLastError instanceof GooglePlayServicesAvailabilityIOException) {
-                    showGooglePlayServicesAvailabilityErrorDialog(
-                            ((GooglePlayServicesAvailabilityIOException) mLastError)
-                                    .getConnectionStatusCode());
-                } else if (mLastError instanceof UserRecoverableAuthIOException) {
-                    startActivityForResult(
-                            ((UserRecoverableAuthIOException) mLastError).getIntent(),
-                            APICaller.REQUEST_AUTHORIZATION);
-                } else {
-                    mOutputText = "The following error occurred:\n"
-                            + mLastError.getMessage();
-                }
-            } else {
-                mOutputText = "Request cancelled.";
-            }
-        }
     }
 }
