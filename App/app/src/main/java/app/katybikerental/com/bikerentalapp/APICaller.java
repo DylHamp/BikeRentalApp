@@ -16,6 +16,8 @@ import com.google.api.client.json.JsonFactory;
 import com.google.api.client.json.jackson2.JacksonFactory;
 import com.google.api.client.util.ExponentialBackOff;
 
+import com.google.api.client.util.Strings;
+import com.google.api.services.sheets.v4.Sheets;
 import com.google.api.services.sheets.v4.SheetsScopes;
 
 import com.google.api.services.sheets.v4.model.*;
@@ -37,16 +39,26 @@ import android.widget.TextView;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
+import java.util.ListIterator;
+import java.util.concurrent.ExecutionException;
 
 import pub.devrel.easypermissions.AfterPermissionGranted;
 import pub.devrel.easypermissions.EasyPermissions;
+
+import static android.webkit.ConsoleMessage.MessageLevel.LOG;
 
 public class APICaller implements EasyPermissions.PermissionCallbacks {
     GoogleAccountCredential mCredential;
     BikeRentalActivity mBikeActivity;
     public ProgressDialog mProgress;
     public String mOutputText;
+    public MakeRequestTask mMakeRequestTask;
+    public MakePostTask mMakePostTask;
+    public String mResults = "Empty";
+    public String mSheet = "Reservations";
 
 
     public APICaller(BikeRentalActivity c) {
@@ -54,6 +66,13 @@ public class APICaller implements EasyPermissions.PermissionCallbacks {
         this.mCredential = GoogleAccountCredential.usingOAuth2(
                 c, Arrays.asList(SCOPES))
                 .setBackOff(new ExponentialBackOff());
+        this.mMakeRequestTask = new MakeRequestTask(mCredential, this, "Reservations");
+        try {
+            this.mMakePostTask = new MakePostTask(mCredential);
+        }
+        catch (IOException ex) {
+            Log.e(TAG, "IOException issue", ex);
+        }
         this.mProgress = new ProgressDialog(c);
         mProgress.setMessage("Calling google api ...");
     }
@@ -66,8 +85,7 @@ public class APICaller implements EasyPermissions.PermissionCallbacks {
     static final int REQUEST_PERMISSION_GET_ACCOUNTS = 1003;
 
     public static final String PREF_ACCOUNT_NAME = "accountName";
-    public static final String[] SCOPES = { SheetsScopes.SPREADSHEETS_READONLY };
-
+    public static final String[] SCOPES = { SheetsScopes.SPREADSHEETS };
 
     /**
      * Attempt to call the API, after verifying that all the preconditions are
@@ -76,17 +94,21 @@ public class APICaller implements EasyPermissions.PermissionCallbacks {
      * of the preconditions are not satisfied, the app will prompt the user as
      * appropriate.
      */
-    public void getResultsFromApi() {
+    public void getResultsFromApi(String sheet) {
+        this.mSheet = sheet;
         if (! isGooglePlayServicesAvailable()) {
             acquireGooglePlayServices();
         } else if (mCredential.getSelectedAccountName() == null) {
             chooseAccount();
         } else if (! isDeviceOnline()) {
-            Log.e(TAG, "No network connection.");
+            this.mOutputText = ("No network connection available.");
         } else {
-            new MakeRequestTask(mCredential).execute();
+            new MakeRequestTask(mCredential, this, mSheet).execute();
+            Log.d(TAG, mResults);
         }
     }
+
+
 
     /**
      * Attempts to set the account used with the API credentials. If an account
@@ -99,7 +121,7 @@ public class APICaller implements EasyPermissions.PermissionCallbacks {
      * is granted.
      */
     @AfterPermissionGranted(REQUEST_PERMISSION_GET_ACCOUNTS)
-    private void chooseAccount() {
+    public void chooseAccount() {
         mBikeActivity.chooseAccount();
     }
 
@@ -150,7 +172,7 @@ public class APICaller implements EasyPermissions.PermissionCallbacks {
      * Checks whether the device currently has a network connection.
      * @return true if the device has a network connection, false otherwise.
      */
-    private boolean isDeviceOnline() {
+    public boolean isDeviceOnline() {
         ConnectivityManager connMgr =
                 (ConnectivityManager) mBikeActivity.getSystemService(Context.CONNECTIVITY_SERVICE);
         NetworkInfo networkInfo = connMgr.getActiveNetworkInfo();
@@ -162,7 +184,7 @@ public class APICaller implements EasyPermissions.PermissionCallbacks {
      * @return true if Google Play Services is available and up to
      *     date on this device; false otherwise.
      */
-    private boolean isGooglePlayServicesAvailable() {
+    public boolean isGooglePlayServicesAvailable() {
         GoogleApiAvailability apiAvailability =
                 GoogleApiAvailability.getInstance();
         int connectionStatusCode = apiAvailability.isGooglePlayServicesAvailable(mBikeActivity);
@@ -177,7 +199,7 @@ public class APICaller implements EasyPermissions.PermissionCallbacks {
      * Attempt to resolve a missing, out-of-date, invalid or disabled Google
      * Play Services installation via a user dialog, if possible.
      */
-    private void acquireGooglePlayServices() {
+    public void acquireGooglePlayServices() {
         GoogleApiAvailability apiAvailability =
                 GoogleApiAvailability.getInstance();
         final int connectionStatusCode =
@@ -194,13 +216,34 @@ public class APICaller implements EasyPermissions.PermissionCallbacks {
      * @param connectionStatusCode code describing the presence (or lack of)
      *     Google Play Services on this device.
      */
-    void showGooglePlayServicesAvailabilityErrorDialog(
+    public void showGooglePlayServicesAvailabilityErrorDialog(
             final int connectionStatusCode) {
         GoogleApiAvailability apiAvailability = GoogleApiAvailability.getInstance();
         Dialog dialog = apiAvailability.getErrorDialog(mBikeActivity,
                 connectionStatusCode,
                 REQUEST_GOOGLE_PLAY_SERVICES);
         dialog.show();
+    }
+
+    public String updateSheets(List<Object> submission) {
+        String response = "Nothing Happend";
+        if (! isGooglePlayServicesAvailable()) {
+            acquireGooglePlayServices();
+        } else if (mCredential.getSelectedAccountName() == null) {
+            chooseAccount();
+        } else if (! isDeviceOnline()) {
+            response = "No network connection available.";
+        } else {
+            try {
+                new MakePostTask(mCredential, submission, "Reservations").execute();
+                response = "Post Task Started";
+            }
+            catch (IOException ex) {
+                Log.e(TAG, "Error", ex);
+                response = "Error";
+            }
+        }
+        return response;
     }
 
     /**
@@ -210,14 +253,20 @@ public class APICaller implements EasyPermissions.PermissionCallbacks {
     public class MakeRequestTask extends AsyncTask<Void, Void, List<String>> {
         public com.google.api.services.sheets.v4.Sheets mService = null;
         public Exception mLastError = null;
+        public APICaller mCaller;
+        public String mSheet;
+        public Integer mColumns = 2;
 
-        MakeRequestTask(GoogleAccountCredential credential) {
+        MakeRequestTask(GoogleAccountCredential credential, APICaller caller, String sheet) {
             HttpTransport transport = AndroidHttp.newCompatibleTransport();
             JsonFactory jsonFactory = JacksonFactory.getDefaultInstance();
             mService = new com.google.api.services.sheets.v4.Sheets.Builder(
                     transport, jsonFactory, credential)
                     .setApplicationName("Google Sheets API Android Quickstart")
                     .build();
+            mCaller = caller;
+            mSheet = sheet;
+
         }
 
         @Override
@@ -259,7 +308,7 @@ public class APICaller implements EasyPermissions.PermissionCallbacks {
             } else {
                 mOutputText = "Request cancelled.";
             }
-            Log.e(TAG, "Stuff");
+            Log.e(TAG, mOutputText);
         }
 
         /**
@@ -286,24 +335,124 @@ public class APICaller implements EasyPermissions.PermissionCallbacks {
          * @throws IOException
          */
         public List<String> getDataFromApi() throws IOException {
+            String range = mSheet;
+            if (mSheet == "Info") {
+                mColumns = 1;
+            }
             String spreadsheetId = "1iflc3utd0p6V6cubjb3byDzsgf2OPdUv8fjJL55MABY";
-            String range = "Sheet1!A2:E";
             List<String> results = new ArrayList<String>();
+
             ValueRange response = this.mService.spreadsheets().values()
                     .get(spreadsheetId, range)
                     .execute();
             List<List<Object>> values = response.getValues();
             if (values != null) {
-                results.add("Name, Major");
                 for (List row : values) {
-                    results.add(row.get(0) + ", " + row.get(4));
+                    for (int i = 0; i < mColumns; i++ ) {
+                        results.add(row.get(i) + "");
+                    }
                 }
             }
-            Log.d(TAG, results.toString());
+            mOutputText = results.toString();
+            mCaller.mResults = results.toString();
+            Log.d(TAG, mResults.toString() + "FROM SHEETS");
             return results;
         }
 
 
+    }
 
+    public class MakePostTask extends AsyncTask<Void, Void, List<String>> {
+        public com.google.api.services.sheets.v4.Sheets mService = null;
+        public Exception mLastError;
+        public Boolean mSent;
+        public ValueRange mValueRange;
+        public String mSheet;
+        String spreadsheetId = "1iflc3utd0p6V6cubjb3byDzsgf2OPdUv8fjJL55MABY";
+
+        MakePostTask(GoogleAccountCredential credential) throws IOException {
+            HttpTransport transport = AndroidHttp.newCompatibleTransport();
+            JsonFactory jsonFactory = JacksonFactory.getDefaultInstance();
+            mSheet = "Errors";
+            this.mService = new com.google.api.services.sheets.v4.Sheets.Builder(
+                    transport, jsonFactory, credential)
+                    .setApplicationName("Google Sheets API Android Quickstart")
+                    .build();
+            ArrayList<List<Object>> emptyValues = new ArrayList<>();
+            List<Object> submission = new ArrayList<>();
+            submission.add("Nothing here");
+            emptyValues.add(submission);
+            this.mValueRange = new ValueRange();
+            this.mValueRange.setValues(emptyValues);
+            this.mValueRange.setMajorDimension("ROWS");
+
+
+        }
+
+        MakePostTask(GoogleAccountCredential credential, List<Object> submission, String sheet) throws IOException {
+            HttpTransport transport = AndroidHttp.newCompatibleTransport();
+            JsonFactory jsonFactory = JacksonFactory.getDefaultInstance();
+            mSheet = sheet;
+            this.mService = new com.google.api.services.sheets.v4.Sheets.Builder(
+                    transport, jsonFactory, credential)
+                    .setApplicationName("Google Sheets API Android Quickstart")
+                    .build();
+            ArrayList<List<Object>> values = new ArrayList<>();
+            try {
+                values.add(submission);
+            }
+            catch (NullPointerException ex) {
+                List<Object> emptyValues = new ArrayList<>();
+                emptyValues.add("Nothing");
+                emptyValues.add("Was");
+                emptyValues.add("Submitted");
+                values.add(emptyValues);
+            }
+            this.mValueRange = new ValueRange();
+            this.mValueRange.setValues(values);
+            this.mValueRange.setMajorDimension("ROWS");
+
+
+        }
+
+        public void updateSheets(ValueRange valueRange) throws IOException {
+            Sheets.Spreadsheets.Values.Append request = this.mService.spreadsheets().values().append(spreadsheetId, "Reservations", valueRange).setValueInputOption("USER_ENTERED");
+            AppendValuesResponse response = request.execute();
+            Log.d(TAG, response.toString());
+        }
+
+        @Override
+        protected List<String> doInBackground(Void... params) {
+            try {
+                updateSheets(mValueRange);
+                Log.d(TAG, "Append has been sent");
+                this.mSent = true;
+            } catch (Exception e) {
+                this.mLastError = e;
+                Log.e(TAG, "Things went wrong", e);
+                this.mSent = false;
+                cancel(true);
+                return null;
+            }
+            return null;
+        }
+        @Override
+        protected void onPreExecute() {
+            mOutputText = "";
+            mProgress.show();
+        }
+
+        @Override
+        protected void onPostExecute(List<String> output) {
+            mProgress.hide();
+            String textOutput = "";
+            if (mSent) {
+                Log.e(TAG, "No results returned.");
+            } else {
+                output.add(0, "Data retrieved using the Google Sheets API:");
+                textOutput = TextUtils.join("\n", output);
+            }
+            Log.d(TAG, textOutput);
+        }
     }
 }

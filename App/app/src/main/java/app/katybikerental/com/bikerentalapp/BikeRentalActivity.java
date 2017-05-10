@@ -3,18 +3,14 @@ package app.katybikerental.com.bikerentalapp;
 import android.Manifest;
 import android.accounts.AccountManager;
 import android.app.AlertDialog;
-import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
-import android.support.design.widget.FloatingActionButton;
-import android.support.design.widget.Snackbar;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentTransaction;
 import android.util.Log;
-import android.view.View;
 import android.support.design.widget.NavigationView;
 import android.support.v4.view.GravityCompat;
 import android.support.v4.widget.DrawerLayout;
@@ -23,13 +19,12 @@ import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.widget.TextView;
 
 import pub.devrel.easypermissions.EasyPermissions;
 
 public class BikeRentalActivity extends AppCompatActivity
         implements NavigationView.OnNavigationItemSelectedListener {
-    public APICaller mAPIData;
+    public APICaller mAPICaller;
     public AlertDialog mProgress;
 
     static String TAG = "BikeRentalActivity";
@@ -41,7 +36,7 @@ public class BikeRentalActivity extends AppCompatActivity
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
-        mAPIData = new APICaller(this);
+        mAPICaller = new APICaller(this);
 
         FragmentTransaction ft = getSupportFragmentManager().beginTransaction();
         Fragment fragment = new MenuFragment();
@@ -63,22 +58,22 @@ public class BikeRentalActivity extends AppCompatActivity
         if (EasyPermissions.hasPermissions(
                 this, Manifest.permission.GET_ACCOUNTS)) {
             String accountName = getPreferences(Context.MODE_PRIVATE)
-                    .getString(mAPIData.PREF_ACCOUNT_NAME, null);
+                    .getString(mAPICaller.PREF_ACCOUNT_NAME, null);
             if (accountName != null) {
-                mAPIData.mCredential.setSelectedAccountName(accountName);
-                mAPIData.getResultsFromApi();
+                mAPICaller.mCredential.setSelectedAccountName(accountName);
+                mAPICaller.getResultsFromApi(mAPICaller.mSheet);
             } else {
                 // Start a dialog from which the user can choose an account
                 startActivityForResult(
-                        mAPIData.mCredential.newChooseAccountIntent(),
-                        mAPIData.REQUEST_ACCOUNT_PICKER);
+                        mAPICaller.mCredential.newChooseAccountIntent(),
+                        mAPICaller.REQUEST_ACCOUNT_PICKER);
             }
         } else {
             // Request the GET_ACCOUNTS permission via a user dialog
             EasyPermissions.requestPermissions(
                     this,
                     "This app needs to access your Google account (via Contacts).",
-                    mAPIData.REQUEST_PERMISSION_GET_ACCOUNTS,
+                    mAPICaller.REQUEST_PERMISSION_GET_ACCOUNTS,
                     Manifest.permission.GET_ACCOUNTS);
         }
     }
@@ -104,7 +99,7 @@ public class BikeRentalActivity extends AppCompatActivity
                             "This app requires Google Play Services. Please install " +
                                     "Google Play Services on your device and relaunch this app.");
                 } else {
-                    mAPIData.getResultsFromApi();
+                    mAPICaller.getResultsFromApi(mAPICaller.mSheet);
                 }
                 break;
             case 1000:
@@ -116,16 +111,16 @@ public class BikeRentalActivity extends AppCompatActivity
                         SharedPreferences settings =
                                 getPreferences(Context.MODE_PRIVATE);
                         SharedPreferences.Editor editor = settings.edit();
-                        editor.putString(mAPIData.PREF_ACCOUNT_NAME, accountName);
+                        editor.putString(mAPICaller.PREF_ACCOUNT_NAME, accountName);
                         editor.apply();
-                        mAPIData.mCredential.setSelectedAccountName(accountName);
-                        mAPIData.getResultsFromApi();
+                        mAPICaller.mCredential.setSelectedAccountName(accountName);
+                        mAPICaller.getResultsFromApi(mAPICaller.mSheet);
                     }
                 }
                 break;
             case 1001:
                 if (resultCode == RESULT_OK) {
-                    mAPIData.getResultsFromApi();
+                    mAPICaller.getResultsFromApi(mAPICaller.mSheet);
                 }
                 break;
         }
